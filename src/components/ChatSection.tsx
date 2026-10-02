@@ -503,9 +503,7 @@ export const ChatSection: React.FC = () => {
         </div>
 
         {/* Mobile Keyboard Friendly Input Footer */}
-        <div className={`p-2.5 md:p-4 transition-all duration-200 bg-card border-t border-border/50 shrink-0 ${
-          isInputFocused ? 'mb-0 z-50 shadow-2xl' : 'mb-14 md:mb-0'
-        }`}>
+        <div className="p-2.5 md:p-4 bg-card border-t border-border/50 shrink-0">
           <div className="flex items-center gap-1 mb-2 overflow-x-auto pb-1 no-scrollbar">
             {loveEmojis.map((emoji) => (
               <button
