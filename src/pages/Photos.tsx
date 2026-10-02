@@ -279,28 +279,6 @@ const PhotosPage = () => {
               <Plus size={24} />
               <span>Upload Photo or Video</span>
             </button>
-
-            <button
-              onClick={() => loadAllMedia(true)}
-              disabled={isRefreshing}
-              className="px-5 py-3 rounded-full text-sm font-semibold border border-border bg-card text-foreground hover:bg-muted transition-all flex items-center gap-2"
-              title="Sync latest photos from all devices"
-            >
-              <RefreshCw size={18} className={isRefreshing ? "animate-spin text-primary" : ""} />
-              <span>{isRefreshing ? "Syncing..." : "Sync Devices"}</span>
-            </button>
-
-            <button
-              onClick={() => setShowR2Config(!showR2Config)}
-              className={`px-5 py-3 rounded-full text-sm font-semibold border transition-all flex items-center gap-2 ${
-                r2WorkerUrl
-                  ? "bg-sky-500/10 border-sky-500/30 text-sky-600 dark:text-sky-400"
-                  : "bg-card border-border text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Cloud size={18} />
-              <span>{r2WorkerUrl ? "Cloudflare R2 Linked ☁️" : "Connect Cloudflare R2 Worker"}</span>
-            </button>
           </div>
 
           {/* Cloudflare Worker URL Config Panel */}
