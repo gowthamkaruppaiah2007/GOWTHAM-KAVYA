@@ -13,6 +13,7 @@ export const ChatSection: React.FC = () => {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [isInputFocused, setIsInputFocused] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // WebRTC Call States
@@ -502,7 +503,9 @@ export const ChatSection: React.FC = () => {
         </div>
 
         {/* Mobile Keyboard Friendly Input Footer */}
-        <div className="p-2.5 md:p-4 mb-14 md:mb-0 bg-card border-t border-border/50 shrink-0">
+        <div className={`p-2.5 md:p-4 transition-all duration-200 bg-card border-t border-border/50 shrink-0 ${
+          isInputFocused ? 'mb-0 z-50 shadow-2xl' : 'mb-14 md:mb-0'
+        }`}>
           <div className="flex items-center gap-1 mb-2 overflow-x-auto pb-1 no-scrollbar">
             {loveEmojis.map((emoji) => (
               <button
@@ -521,8 +524,13 @@ export const ChatSection: React.FC = () => {
               type="text"
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
+              onFocus={() => {
+                setIsInputFocused(true);
+                setTimeout(scrollToBottom, 150);
+              }}
+              onBlur={() => setIsInputFocused(false)}
               placeholder={`Write to ${partner?.name}...`}
-              className="flex-1 bg-background border border-input rounded-full px-4 py-2.5 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              className="flex-1 bg-background border border-input rounded-full px-4 py-2.5 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
             />
             <button
               type="submit"
