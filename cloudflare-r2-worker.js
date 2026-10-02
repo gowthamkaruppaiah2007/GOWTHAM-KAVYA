@@ -98,22 +98,28 @@ export default {
     // 2. LIST ENDPOINT: GET /list
     if ((url.pathname === "/list" || url.pathname === "/files") && request.method === "GET") {
       try {
-        const objects = await bucket.list({ prefix: "uploads/" });
+        // List all objects in bucket
+        const objects = await bucket.list();
         const items = objects.objects.map((obj) => {
-          const keyParts = obj.key.replace("uploads/", "").split("-");
+          const keyClean = obj.key.replace("uploads/", "");
+          const keyParts = keyClean.split("-");
           const ext = obj.key.split(".").pop() || "";
           const isVideo = ["mp4", "mov", "webm", "m4v", "avi"].includes(ext.toLowerCase());
           
           let name = obj.customMetadata?.name ? decodeURIComponent(obj.customMetadata.name) : "";
           if (!name) {
-            const rawName = keyParts.slice(1).join("-").replace(/\.[^/.]+$/, "").replace(/-/g, " ");
+            const rawName = keyParts.length > 1 ? keyParts.slice(1).join("-").replace(/\.[^/.]+$/, "").replace(/-/g, " ") : keyClean;
             name = rawName ? rawName.charAt(0).toUpperCase() + rawName.slice(1) : "Shared Memory";
           }
+
+          const publicUrl = `https://pub-19f042b705484ca39ef335d2596b0ec8.r2.dev/${obj.key}`;
+          const proxyUrl = `${url.origin}/view?key=${encodeURIComponent(obj.key)}`;
 
           return {
             id: `r2-${obj.key}`,
             key: obj.key,
-            url: `https://pub-19f042b705484ca39ef335d2596b0ec8.r2.dev/${obj.key}`,
+            url: publicUrl,
+            proxyUrl: proxyUrl,
             name: name,
             type: obj.customMetadata?.type || (isVideo ? "video" : "image"),
             dateAdded: obj.customMetadata?.dateAdded || new Date(obj.uploaded).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
@@ -133,7 +139,40 @@ export default {
       }
     }
 
-    // 3. DELETE ENDPOINT: DELETE /delete?key=...
+    // 3. PROXY VIEW ENDPOINT: GET /view?key=... (Direct image proxy to bypass public domain CORS issues)
+    if ((url.pathname === "/view" || url.pathname === "/file") && request.method === "GET") {
+      try {
+        const key = url.searchParams.get("key");
+        if (!key) {
+          return new Response(JSON.stringify({ error: "Missing key parameter" }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        const object = await bucket.get(key);
+        if (!object) {
+          return new Response(JSON.stringify({ error: "Object not found" }), {
+            status: 404,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        const headers = new Headers(corsHeaders);
+        object.writeHttpMetadata(headers);
+        headers.set("etag", object.httpEtag);
+        headers.set("Cache-Control", "public, max-age=31536000");
+
+        return new Response(object.body, { headers });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: err.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    // 4. DELETE ENDPOINT: DELETE /delete?key=...
     if (url.pathname === "/delete" && (request.method === "DELETE" || request.method === "POST")) {
       try {
         const keyToDelete = url.searchParams.get("key");
@@ -161,6 +200,7 @@ export default {
         endpoints: {
           upload: "POST /upload",
           list: "GET /list",
+          view: "GET /view?key=uploads/...",
           delete: "DELETE /delete?key=uploads/...",
         }
       }),

@@ -25,6 +25,7 @@ import {
 export interface MediaItem {
   id: string;
   url: string;
+  proxyUrl?: string;
   name: string;
   type: "image" | "video";
   dateAdded: string;
@@ -67,6 +68,13 @@ const PhotosPage = () => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Helper for deduplicating R2 cloud photos
+  const getDedupeKey = (item: MediaItem) => {
+    if (item.key) return `r2-${item.key}`;
+    if (item.id) return item.id;
+    return item.url;
+  };
+
   // Load photos across devices (R2 Bucket + Cloud Sync + Defaults)
   const loadAllMedia = async (showLoader = false) => {
     if (showLoader) setIsRefreshing(true);
@@ -86,17 +94,17 @@ const PhotosPage = () => {
         }));
       }
 
-      // Merge and deduplicate by URL or ID
+      // Merge and deduplicate by key, id, or URL
       const itemMap = new Map<string, MediaItem>();
 
       // A) R2 Items (Highest priority live cloud storage objects)
-      r2Items.forEach((item) => itemMap.set(item.id || item.url, item));
+      r2Items.forEach((item) => itemMap.set(getDedupeKey(item), item));
 
       // B) Cloud Synced Items
       cloudItems.forEach((item) => {
-        const key = item.id || item.url;
-        if (!itemMap.has(key)) {
-          itemMap.set(key, item);
+        const k = getDedupeKey(item);
+        if (!itemMap.has(k)) {
+          itemMap.set(k, item);
         }
       });
 
@@ -409,6 +417,20 @@ const PhotosPage = () => {
                       alt={item.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       loading="lazy"
+                      onError={(e) => {
+                        const img = e.currentTarget;
+                        if (item.proxyUrl && img.src !== item.proxyUrl) {
+                          img.src = item.proxyUrl;
+                        } else if (item.key && r2WorkerUrl) {
+                          try {
+                            const origin = new URL(r2WorkerUrl).origin;
+                            const fallback = `${origin}/view?key=${encodeURIComponent(item.key)}`;
+                            if (img.src !== fallback) {
+                              img.src = fallback;
+                            }
+                          } catch (err) {}
+                        }
+                      }}
                     />
                   )}
 
@@ -635,6 +657,20 @@ const PhotosPage = () => {
                   src={selectedMedia.url}
                   alt={selectedMedia.name}
                   className="max-w-full max-h-[75vh] object-contain rounded-2xl"
+                  onError={(e) => {
+                    const img = e.currentTarget;
+                    if (selectedMedia.proxyUrl && img.src !== selectedMedia.proxyUrl) {
+                      img.src = selectedMedia.proxyUrl;
+                    } else if (selectedMedia.key && r2WorkerUrl) {
+                      try {
+                        const origin = new URL(r2WorkerUrl).origin;
+                        const fallback = `${origin}/view?key=${encodeURIComponent(selectedMedia.key)}`;
+                        if (img.src !== fallback) {
+                          img.src = fallback;
+                        }
+                      } catch (err) {}
+                    }
+                  }}
                 />
               )}
             </div>

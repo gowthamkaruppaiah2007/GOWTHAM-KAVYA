@@ -1,8 +1,9 @@
-import { R2_CONFIG } from "@/lib/r2";
+import { R2_CONFIG, getR2PublicUrl } from "@/lib/r2";
 
 export interface R2UploadResult {
   success: boolean;
   url: string;
+  proxyUrl?: string;
   key?: string;
   error?: string;
 }
@@ -11,6 +12,7 @@ export interface R2MediaItem {
   id: string;
   key?: string;
   url: string;
+  proxyUrl?: string;
   name: string;
   type: "image" | "video";
   dateAdded: string;
@@ -34,8 +36,8 @@ export const uploadFileToR2 = async (
 
   try {
     let endpoint = rawEndpoint.trim();
-    if (endpoint.endsWith("/list") || endpoint.endsWith("/delete")) {
-      endpoint = endpoint.replace(/\/(list|delete)$/, "/upload");
+    if (endpoint.endsWith("/list") || endpoint.endsWith("/delete") || endpoint.endsWith("/view")) {
+      endpoint = endpoint.replace(/\/(list|delete|view)$/, "/upload");
     } else if (!endpoint.endsWith("/upload")) {
       endpoint = endpoint.replace(/\/+$/, "") + "/upload";
     }
@@ -59,10 +61,16 @@ export const uploadFileToR2 = async (
       throw new Error(data.error);
     }
 
+    const key = data.key;
+    const publicUrl = data.url || getR2PublicUrl(key);
+    const workerOrigin = new URL(endpoint).origin;
+    const proxyUrl = `${workerOrigin}/view?key=${encodeURIComponent(key)}`;
+
     return {
       success: true,
-      url: data.url || `${R2_CONFIG.publicDevUrl}/${data.key}`,
-      key: data.key,
+      url: publicUrl,
+      proxyUrl,
+      key,
     };
   } catch (error: any) {
     console.error("Cloudflare R2 Upload Error:", error);
@@ -90,8 +98,8 @@ export const fetchR2UploadedMedia = async (
 
   try {
     let listUrl = rawEndpoint.trim();
-    if (listUrl.endsWith("/upload") || listUrl.endsWith("/delete")) {
-      listUrl = listUrl.replace(/\/(upload|delete)$/, "/list");
+    if (listUrl.endsWith("/upload") || listUrl.endsWith("/delete") || listUrl.endsWith("/view")) {
+      listUrl = listUrl.replace(/\/(upload|delete|view)$/, "/list");
     } else if (!listUrl.endsWith("/list")) {
       listUrl = listUrl.replace(/\/+$/, "") + "/list";
     }
@@ -106,16 +114,25 @@ export const fetchR2UploadedMedia = async (
       return [];
     }
 
-    return data.map((item: any) => ({
-      id: item.id || `r2-${item.key || Date.now()}`,
-      key: item.key,
-      url: item.url,
-      name: item.name || "Cloud Memory",
-      type: item.type === "video" ? "video" : "image",
-      dateAdded: item.dateAdded || new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-      isCustom: true,
-      storageProvider: "r2" as const,
-    }));
+    const workerOrigin = new URL(listUrl).origin;
+
+    return data.map((item: any) => {
+      const key = item.key || item.id || "";
+      const publicUrl = item.url || getR2PublicUrl(key);
+      const proxyUrl = item.proxyUrl || `${workerOrigin}/view?key=${encodeURIComponent(key)}`;
+
+      return {
+        id: item.id || `r2-${key || Date.now()}`,
+        key: key,
+        url: publicUrl,
+        proxyUrl: proxyUrl,
+        name: item.name || "Cloud Memory",
+        type: item.type === "video" ? "video" : "image",
+        dateAdded: item.dateAdded || new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        isCustom: true,
+        storageProvider: "r2" as const,
+      };
+    });
   } catch (error) {
     console.warn("Error fetching Cloudflare R2 media list:", error);
     return [];
@@ -139,8 +156,8 @@ export const deleteR2Media = async (
 
   try {
     let deleteUrl = rawEndpoint.trim();
-    if (deleteUrl.endsWith("/upload") || deleteUrl.endsWith("/list")) {
-      deleteUrl = deleteUrl.replace(/\/(upload|list)$/, "/delete");
+    if (deleteUrl.endsWith("/upload") || deleteUrl.endsWith("/list") || deleteUrl.endsWith("/view")) {
+      deleteUrl = deleteUrl.replace(/\/(upload|list|view)$/, "/delete");
     } else if (!deleteUrl.endsWith("/delete")) {
       deleteUrl = deleteUrl.replace(/\/+$/, "") + "/delete";
     }
