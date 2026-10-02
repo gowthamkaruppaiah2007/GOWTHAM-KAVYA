@@ -18,13 +18,13 @@ const R2GuideModal = ({ isOpen, onClose }: R2GuideModalProps) => {
     setTimeout(() => setCopiedSection(null), 2000);
   };
 
-  const workerCode = `// Cloudflare Worker Code tailored for your bucket "kavya-gowtham-memories"
+  const workerCode = `// Cloudflare Worker Code for Kavya & Gowtham R2 Storage
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, PUT, POST, DELETE, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
     };
 
@@ -32,45 +32,65 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
-    // Handle File Upload: POST /upload
-    if (url.pathname === "/upload" && request.method === "POST") {
-      try {
-        const formData = await request.formData();
-        const file = formData.get("file");
-        const customTitle = formData.get("name") || file.name;
-        
-        const timestamp = Date.now();
-        const fileExt = file.name.split('.').pop();
-        const key = \`uploads/\${timestamp}-\${customTitle.toLowerCase().replace(/[^a-z0-9]/g, '-')}.\${fileExt}\`;
-
-        // Upload directly to your R2 Bucket "kavya-gowtham-memories"
-        await env.MY_R2_BUCKET.put(key, file.stream(), {
-          httpMetadata: { contentType: file.type }
-        });
-
-        // Public Dev URL
-        const publicUrl = \`https://pub-19f042b705484ca39ef335d2596b0ec8.r2.dev/\${key}\`;
-        
-        return new Response(JSON.stringify({ 
-          success: true, 
-          url: publicUrl, 
-          key,
-          name: customTitle,
-          type: file.type.startsWith('video/') ? 'video' : 'image'
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-      } catch (err) {
-        return new Response(JSON.stringify({ error: err.message }), {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-      }
+    const bucket = env.MY_R2_BUCKET || env.R2_BUCKET;
+    if (!bucket) {
+      return new Response(JSON.stringify({ error: "MY_R2_BUCKET binding missing!" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
     }
 
-    return new Response("Cloudflare R2 Worker for Kavya & Gowtham is active!", { 
-      headers: corsHeaders 
-    });
+    // 1. Upload Media: POST /upload
+    if ((url.pathname === "/upload" || url.pathname === "/") && request.method === "POST") {
+      const formData = await request.formData();
+      const file = formData.get("file");
+      const customName = formData.get("name") || file.name;
+      const timestamp = Date.now();
+      const ext = file.name ? file.name.split('.').pop() : 'jpg';
+      const r2Key = \`uploads/\${timestamp}-\${customName.toString().toLowerCase().replace(/[^a-z0-9]/g, '-')}.\${ext}\`;
+      const isVideo = file.type.startsWith('video/');
+
+      await bucket.put(r2Key, file.stream(), {
+        httpMetadata: { contentType: file.type },
+        customMetadata: {
+          name: encodeURIComponent(customName.toString()),
+          type: isVideo ? 'video' : 'image',
+          dateAdded: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        }
+      });
+
+      const publicUrl = \`https://pub-19f042b705484ca39ef335d2596b0ec8.r2.dev/\${r2Key}\`;
+      return new Response(JSON.stringify({ success: true, url: publicUrl, key: r2Key, name: customName, type: isVideo ? 'video' : 'image' }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // 2. Fetch All Media Across Devices: GET /list
+    if ((url.pathname === "/list" || url.pathname === "/files") && request.method === "GET") {
+      const objects = await bucket.list({ prefix: "uploads/" });
+      const items = objects.objects.map((obj) => ({
+        id: \`r2-\${obj.key}\`,
+        key: obj.key,
+        url: \`https://pub-19f042b705484ca39ef335d2596b0ec8.r2.dev/\${obj.key}\`,
+        name: obj.customMetadata?.name ? decodeURIComponent(obj.customMetadata.name) : "Shared Memory",
+        type: obj.customMetadata?.type || "image",
+        dateAdded: obj.customMetadata?.dateAdded || new Date(obj.uploaded).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        isCustom: true,
+        storageProvider: "r2"
+      }));
+      return new Response(JSON.stringify(items), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+
+    // 3. Delete Media: DELETE /delete?key=...
+    if (url.pathname === "/delete" && request.method === "DELETE") {
+      const key = url.searchParams.get("key");
+      if (key) await bucket.delete(key);
+      return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
+    }
+
+    return new Response("Cloudflare R2 Worker Active!", { headers: corsHeaders });
   }
 };`;
 

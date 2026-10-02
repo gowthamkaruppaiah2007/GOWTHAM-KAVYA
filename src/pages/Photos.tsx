@@ -3,7 +3,8 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import R2GuideModal from "@/components/R2GuideModal";
 import { R2_CONFIG } from "@/lib/r2";
-import { uploadFileToR2 } from "@/services/r2Service";
+import { uploadFileToR2, fetchR2UploadedMedia, deleteR2Media } from "@/services/r2Service";
+import { fetchCloudSyncedMedia, syncMediaToCloud, deleteMediaFromCloud } from "@/services/cloudSyncService";
 import { 
   Upload, 
   Image as ImageIcon, 
@@ -17,9 +18,8 @@ import {
   Tag,
   CheckCircle2,
   Cloud,
-  Link as LinkIcon,
-  Loader2,
-  AlertCircle
+  RefreshCw,
+  Loader2
 } from "lucide-react";
 
 export interface MediaItem {
@@ -29,7 +29,8 @@ export interface MediaItem {
   type: "image" | "video";
   dateAdded: string;
   isCustom?: boolean;
-  storageProvider?: "r2" | "local";
+  storageProvider?: "r2" | "cloud" | "local";
+  key?: string;
 }
 
 const initialPhotos: MediaItem[] = Array.from({ length: 20 }, (_, i) => ({
@@ -43,19 +44,8 @@ const initialPhotos: MediaItem[] = Array.from({ length: 20 }, (_, i) => ({
 }));
 
 const PhotosPage = () => {
-  const [mediaList, setMediaList] = useState<MediaItem[]>(() => {
-    const saved = localStorage.getItem("kavya_gowtham_user_media");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return [...parsed, ...initialPhotos];
-      } catch (e) {
-        console.error("Failed to parse saved media", e);
-      }
-    }
-    return initialPhotos;
-  });
-
+  const [mediaList, setMediaList] = useState<MediaItem[]>(initialPhotos);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState<"all" | "image" | "video">("all");
   const [selectedMedia, setSelectedMedia] = useState<MediaItem | null>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -77,10 +67,72 @@ const PhotosPage = () => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Load photos across devices (R2 Bucket + Cloud Sync + Defaults)
+  const loadAllMedia = async (showLoader = false) => {
+    if (showLoader) setIsRefreshing(true);
+
+    try {
+      // 1. Fetch Cloud Synced Items
+      const cloudItems = await fetchCloudSyncedMedia();
+
+      // 2. Fetch items directly from Cloudflare R2 Storage Bucket
+      let r2Items: MediaItem[] = [];
+      if (r2WorkerUrl) {
+        const fetchedR2 = await fetchR2UploadedMedia(r2WorkerUrl);
+        r2Items = fetchedR2.map((item) => ({
+          ...item,
+          isCustom: true,
+          storageProvider: "r2" as const,
+        }));
+      }
+
+      // Merge and deduplicate by URL or ID
+      const itemMap = new Map<string, MediaItem>();
+
+      // A) R2 Items (Highest priority live cloud storage objects)
+      r2Items.forEach((item) => itemMap.set(item.id || item.url, item));
+
+      // B) Cloud Synced Items
+      cloudItems.forEach((item) => {
+        const key = item.id || item.url;
+        if (!itemMap.has(key)) {
+          itemMap.set(key, item);
+        }
+      });
+
+      // C) Default Album Photos
+      initialPhotos.forEach((item) => {
+        if (!itemMap.has(item.id)) {
+          itemMap.set(item.id, item);
+        }
+      });
+
+      const mergedList = Array.from(itemMap.values());
+      setMediaList(mergedList);
+    } catch (err) {
+      console.error("Error loading synced media:", err);
+    } finally {
+      if (showLoader) setIsRefreshing(false);
+    }
+  };
+
+  // Initial load and periodic cross-device poll (every 15 seconds)
+  useEffect(() => {
+    loadAllMedia();
+
+    const pollInterval = setInterval(() => {
+      loadAllMedia(false);
+    }, 15000);
+
+    return () => clearInterval(pollInterval);
+  }, [r2WorkerUrl]);
+
   // Save R2 Worker URL
   const handleSaveR2WorkerUrl = (url: string) => {
-    setR2WorkerUrl(url);
-    localStorage.setItem("kavya_gowtham_r2_worker_url", url.trim());
+    const cleanUrl = url.trim();
+    setR2WorkerUrl(cleanUrl);
+    localStorage.setItem("kavya_gowtham_r2_worker_url", cleanUrl);
+    loadAllMedia(true);
   };
 
   // Handle File Selection
@@ -99,7 +151,7 @@ const PhotosPage = () => {
     setPreviewUrl(url);
   };
 
-  // Upload Handler (R2 Cloud or Local Fallback)
+  // Upload Handler (R2 Cloud Bucket & Cross-Device Cloud Sync)
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!uploadFile) return;
@@ -107,63 +159,64 @@ const PhotosPage = () => {
     setIsUploading(true);
     setUploadStatus(null);
 
-    // Try Cloudflare R2 upload first if Worker URL exists
+    const currentDate = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const cleanTitle = mediaTitle.trim() || (mediaType === "video" ? "Memory Video" : "Memory Photo");
+
+    // 1. Try Cloudflare R2 Upload if Worker URL exists
     if (r2WorkerUrl.trim()) {
-      const result = await uploadFileToR2(uploadFile, mediaTitle, r2WorkerUrl.trim());
+      const result = await uploadFileToR2(uploadFile, cleanTitle, r2WorkerUrl.trim());
       if (result.success && result.url) {
         const newItem: MediaItem = {
           id: `r2-${Date.now()}`,
           url: result.url,
-          name: mediaTitle.trim() || "Memory",
+          name: cleanTitle,
           type: mediaType,
-          dateAdded: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+          dateAdded: currentDate,
           isCustom: true,
           storageProvider: "r2",
+          key: result.key,
         };
 
-        saveItemToStateAndStorage(newItem);
+        await syncMediaToCloud(newItem);
+        setMediaList((prev) => [newItem, ...prev.filter((item) => item.id !== newItem.id)]);
+
         setUploadStatus({
           type: "success",
-          message: "Uploaded & stored directly in Cloudflare R2 bucket! ☁️❤️",
+          message: "Uploaded to Cloudflare R2 bucket & synced to all devices! ☁️❤️",
         });
         setIsUploading(false);
         setTimeout(() => resetUploadForm(), 1500);
         return;
       } else {
-        console.warn("R2 Upload error, storing locally:", result.error);
+        console.warn("R2 Upload error, saving to cloud sync:", result.error);
       }
     }
 
-    // Local Storage Base64 fallback if no Worker URL or fallback needed
+    // 2. Cloud Sync fallback for base64 / direct memory sync
     const reader = new FileReader();
-    reader.onloadend = () => {
+    reader.onloadend = async () => {
       const base64Url = reader.result as string;
       const newItem: MediaItem = {
         id: `custom-${Date.now()}`,
         url: base64Url,
-        name: mediaTitle.trim() || (mediaType === "video" ? "Memory Video" : "Memory Photo"),
+        name: cleanTitle,
         type: mediaType,
-        dateAdded: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        dateAdded: currentDate,
         isCustom: true,
-        storageProvider: "local",
+        storageProvider: "cloud",
       };
 
-      saveItemToStateAndStorage(newItem);
+      await syncMediaToCloud(newItem);
+      setMediaList((prev) => [newItem, ...prev.filter((item) => item.id !== newItem.id)]);
+
       setUploadStatus({
         type: "success",
-        message: "Memory saved to gallery! ❤️",
+        message: "Memory saved and synced across all devices! ❤️",
       });
       setIsUploading(false);
       setTimeout(() => resetUploadForm(), 1500);
     };
     reader.readAsDataURL(uploadFile);
-  };
-
-  const saveItemToStateAndStorage = (newItem: MediaItem) => {
-    const customItems = JSON.parse(localStorage.getItem("kavya_gowtham_user_media") || "[]");
-    const updatedCustom = [newItem, ...customItems];
-    localStorage.setItem("kavya_gowtham_user_media", JSON.stringify(updatedCustom));
-    setMediaList((prev) => [newItem, ...prev]);
   };
 
   const resetUploadForm = () => {
@@ -175,14 +228,21 @@ const PhotosPage = () => {
     setIsUploadOpen(false);
   };
 
-  const handleDeleteCustomMedia = (id: string, e: React.MouseEvent) => {
+  // Delete Custom Media Item (removes from cloud storage & all devices)
+  const handleDeleteCustomMedia = async (item: MediaItem, e: React.MouseEvent) => {
     e.stopPropagation();
-    const customItems = JSON.parse(localStorage.getItem("kavya_gowtham_user_media") || "[]");
-    const updatedCustom = customItems.filter((item: MediaItem) => item.id !== id);
-    localStorage.setItem("kavya_gowtham_user_media", JSON.stringify(updatedCustom));
 
-    setMediaList((prev) => prev.filter((item) => item.id !== id));
-    if (selectedMedia?.id === id) setSelectedMedia(null);
+    // Remove from Cloud Sync & local storage
+    await deleteMediaFromCloud(item.id);
+
+    // If item is in Cloudflare R2, send delete request to Worker
+    if (item.key || item.id.startsWith("r2-")) {
+      const r2Key = item.key || item.id.replace(/^r2-/, "");
+      await deleteR2Media(r2Key, r2WorkerUrl);
+    }
+
+    setMediaList((prev) => prev.filter((m) => m.id !== item.id && m.url !== item.url));
+    if (selectedMedia?.id === item.id) setSelectedMedia(null);
   };
 
   const filteredMedia = mediaList.filter((item) => {
@@ -207,7 +267,7 @@ const PhotosPage = () => {
             Photos & Videos Gallery
           </h1>
           <p className="font-body text-muted-foreground text-lg max-w-2xl mx-auto mb-8">
-            Upload your photos and videos to store them permanently in your memory album and Cloudflare R2 storage!
+            Upload your photos and videos to view them instantly on any phone, laptop, or device! 📱💻
           </p>
 
           {/* Action Bar */}
@@ -218,6 +278,16 @@ const PhotosPage = () => {
             >
               <Plus size={24} />
               <span>Upload Photo or Video</span>
+            </button>
+
+            <button
+              onClick={() => loadAllMedia(true)}
+              disabled={isRefreshing}
+              className="px-5 py-3 rounded-full text-sm font-semibold border border-border bg-card text-foreground hover:bg-muted transition-all flex items-center gap-2"
+              title="Sync latest photos from all devices"
+            >
+              <RefreshCw size={18} className={isRefreshing ? "animate-spin text-primary" : ""} />
+              <span>{isRefreshing ? "Syncing..." : "Sync Devices"}</span>
             </button>
 
             <button
@@ -250,7 +320,7 @@ const PhotosPage = () => {
               </div>
 
               <p className="text-xs text-muted-foreground font-body mb-3">
-                Paste your deployed Cloudflare Worker URL below. Once saved, all photos and videos uploaded will be stored directly into your Cloudflare R2 bucket (<code className="text-sky-500">{R2_CONFIG.publicDevUrl}</code>)!
+                Paste your deployed Cloudflare Worker URL below. Once saved, all photos and videos uploaded will be stored directly into your Cloudflare R2 bucket (<code className="text-sky-500">{R2_CONFIG.publicDevUrl}</code>) and visible across all devices!
               </p>
 
               <div className="flex gap-2">
@@ -311,7 +381,7 @@ const PhotosPage = () => {
         </div>
 
         <span className="text-xs text-muted-foreground font-body hidden sm:inline-block">
-          Click any photo or video to view in full screen
+          ✨ Multi-Device Sync Active: Uploaded photos appear automatically on all phones & laptops
         </span>
       </section>
 
@@ -365,17 +435,21 @@ const PhotosPage = () => {
                   )}
 
                   {/* Provider Tag */}
-                  {item.storageProvider === "r2" && (
+                  {item.storageProvider === "r2" ? (
                     <span className="absolute top-3 left-3 bg-sky-500/90 text-white text-[10px] px-2 py-0.5 rounded-full font-mono flex items-center gap-1 shadow-sm">
                       <Cloud size={10} /> R2 Cloud
                     </span>
-                  )}
+                  ) : item.isCustom ? (
+                    <span className="absolute top-3 left-3 bg-emerald-500/90 text-white text-[10px] px-2 py-0.5 rounded-full font-mono flex items-center gap-1 shadow-sm">
+                      <Cloud size={10} /> Synced Cloud
+                    </span>
+                  ) : null}
 
                   {/* Delete Button for Custom Uploaded Items */}
                   {item.isCustom && (
                     <button
-                      onClick={(e) => handleDeleteCustomMedia(item.id, e)}
-                      title="Delete item"
+                      onClick={(e) => handleDeleteCustomMedia(item, e)}
+                      title="Delete item from all devices"
                       className="absolute top-3 right-3 p-2 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
                     >
                       <Trash2 size={16} />
@@ -420,7 +494,7 @@ const PhotosPage = () => {
                   Upload Photo or Video
                 </h3>
                 <p className="text-xs text-muted-foreground font-body">
-                  Upload to store in your memory album and Cloudflare R2 cloud
+                  Upload to store in your memory album & sync across all devices
                 </p>
               </div>
             </div>
@@ -543,7 +617,7 @@ const PhotosPage = () => {
                         <span>Uploading...</span>
                       </>
                     ) : (
-                      <span>Save Memory</span>
+                      <span>Save & Sync Memory</span>
                     )}
                   </button>
                 </div>
@@ -593,9 +667,13 @@ const PhotosPage = () => {
               </h3>
               <p className="text-xs text-white/70 font-body mt-1 flex items-center justify-center gap-2">
                 <span>{selectedMedia.dateAdded}</span>
-                {selectedMedia.storageProvider === "r2" && (
+                {selectedMedia.storageProvider === "r2" ? (
                   <span className="bg-sky-500/90 text-white px-2 py-0.5 rounded text-[10px] font-mono flex items-center gap-1">
                     <Cloud size={10} /> Cloudflare R2 Storage
+                  </span>
+                ) : (
+                  <span className="bg-emerald-500/90 text-white px-2 py-0.5 rounded text-[10px] font-mono flex items-center gap-1">
+                    <Cloud size={10} /> Synced Across Devices
                   </span>
                 )}
               </p>
