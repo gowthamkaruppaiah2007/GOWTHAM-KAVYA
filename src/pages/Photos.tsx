@@ -251,7 +251,7 @@ const PhotosPage = () => {
   });
 
   return (
-    <div className="min-h-screen bg-background overflow-x-hidden pt-20">
+    <div className="min-h-screen bg-background overflow-x-hidden pt-20 pb-20 md:pb-0">
       <Navbar />
 
       {/* Main Header */}

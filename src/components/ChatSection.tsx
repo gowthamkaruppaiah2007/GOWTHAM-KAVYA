@@ -33,7 +33,6 @@ export const ChatSection: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Fetch initial chat messages
   const fetchMessages = async () => {
     try {
       setLoading(true);
@@ -57,7 +56,6 @@ export const ChatSection: React.FC = () => {
   useEffect(() => {
     fetchMessages();
 
-    // Subscribe to chats database changes
     const chatChannel = supabase
       .channel('public:chats')
       .on(
@@ -82,7 +80,6 @@ export const ChatSection: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
-  // Realtime WebRTC Call Signaling Channel
   useEffect(() => {
     if (!user) return;
 
@@ -156,7 +153,6 @@ export const ChatSection: React.FC = () => {
 
   const createPeerConnection = (stream: MediaStream) => {
     const pc = new RTCPeerConnection(ICE_SERVERS);
-
     stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
     pc.ontrack = (event) => {
@@ -179,7 +175,6 @@ export const ChatSection: React.FC = () => {
     return pc;
   };
 
-  // Initiate Video or Audio Call
   const startCall = async (audioOnly: boolean) => {
     if (!partner || !user) return;
 
@@ -217,7 +212,6 @@ export const ChatSection: React.FC = () => {
     }
   };
 
-  // Accept Incoming Call
   const acceptCall = async () => {
     if (!partner || !user || !pendingOfferRef.current) return;
     ringtoneService.stopRingtone();
@@ -253,7 +247,6 @@ export const ChatSection: React.FC = () => {
     }
   };
 
-  // Decline Call
   const declineCall = () => {
     ringtoneService.stopRingtone();
     if (partner) {
@@ -266,7 +259,6 @@ export const ChatSection: React.FC = () => {
     endCallTeardown();
   };
 
-  // End Call locally & notify remote
   const endCall = () => {
     if (partner) {
       callChannelRef.current?.send({
@@ -374,7 +366,7 @@ export const ChatSection: React.FC = () => {
   const loveEmojis = ['❤️', '💖', '💕', '🥰', '🌹', '✨', '💋', '💍'];
 
   return (
-    <div className="w-full max-w-4xl mx-auto p-4 md:p-6">
+    <div className="w-full h-full max-w-5xl mx-auto flex flex-col">
       {/* Incoming Call Dialog */}
       <IncomingCallModal
         isOpen={callState === 'receiving'}
@@ -401,55 +393,55 @@ export const ChatSection: React.FC = () => {
         callDuration={callDuration}
       />
 
-      {/* Main Chat Box */}
-      <div className="bg-card/90 border border-primary/20 rounded-3xl shadow-xl overflow-hidden backdrop-blur-md flex flex-col h-[75vh]">
-        {/* Chat Header with Call Buttons */}
-        <div className="bg-gradient-to-r from-rose-500/10 via-primary/10 to-pink-500/10 p-4 border-b border-border/50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`w-11 h-11 rounded-full bg-gradient-to-tr ${user.color} text-white flex items-center justify-center font-bold shadow-md`}>
+      {/* Full Viewport Height Mobile & Desktop Chat Container */}
+      <div className="bg-card/95 border border-primary/20 md:rounded-3xl shadow-xl overflow-hidden backdrop-blur-md flex flex-col flex-1 h-full">
+        {/* Responsive Mobile Chat Header */}
+        <div className="bg-gradient-to-r from-rose-500/10 via-primary/10 to-pink-500/10 p-3 md:p-4 border-b border-border/50 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-10 h-10 md:w-11 md:h-11 rounded-full bg-gradient-to-tr ${user.color} text-white flex items-center justify-center font-bold text-sm shadow-md`}>
               {user.avatar}
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-foreground text-base">{user.name}</h3>
-                <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full font-medium">Online</span>
+              <div className="flex items-center gap-1.5">
+                <h3 className="font-bold text-foreground text-sm md:text-base leading-tight">{user.name}</h3>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               </div>
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                Chatting with <span className="font-semibold text-foreground">{partner?.name}</span> <Heart size={12} className="text-rose-500 fill-rose-500 inline" />
+              <p className="text-[11px] md:text-xs text-muted-foreground flex items-center gap-1">
+                Chatting with <span className="font-semibold text-foreground">{partner?.name}</span> <Heart size={11} className="text-rose-500 fill-rose-500 inline" />
               </p>
             </div>
           </div>
 
-          {/* Action Icons & Call Buttons */}
-          <div className="flex items-center gap-2">
+          {/* Touch-Friendly Action Icons & Call Buttons */}
+          <div className="flex items-center gap-1.5 md:gap-2">
             <button
               onClick={() => startCall(true)}
               title="Voice Call"
-              className="p-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 rounded-full border border-emerald-500/30 transition-all hover:scale-110 active:scale-95 flex items-center justify-center"
+              className="p-2 md:p-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 rounded-full border border-emerald-500/30 transition-all active:scale-95 flex items-center justify-center"
             >
-              <Phone size={18} />
+              <Phone size={17} />
             </button>
 
             <button
               onClick={() => startCall(false)}
               title="Video Call"
-              className="p-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 rounded-full border border-rose-500/30 transition-all hover:scale-110 active:scale-95 flex items-center justify-center"
+              className="p-2 md:p-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 rounded-full border border-rose-500/30 transition-all active:scale-95 flex items-center justify-center"
             >
-              <Video size={18} />
+              <Video size={17} />
             </button>
 
             <button
               onClick={fetchMessages}
               title="Refresh messages"
-              className="p-2.5 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted/60 transition-colors"
+              className="p-2 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted/60 transition-colors"
             >
-              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+              <RefreshCw size={17} className={loading ? 'animate-spin' : ''} />
             </button>
           </div>
         </div>
 
-        {/* Messages Feed */}
-        <div className="flex-1 p-4 md:p-6 overflow-y-auto space-y-4 bg-background/40">
+        {/* Dynamic Mobile Scrollable Message Log */}
+        <div className="flex-1 p-3 md:p-6 overflow-y-auto space-y-3 md:space-y-4 bg-background/40">
           {loading && messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
               <RefreshCw size={24} className="animate-spin mb-2 text-primary" />
@@ -457,9 +449,9 @@ export const ChatSection: React.FC = () => {
             </div>
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground p-6">
-              <MessageCircle size={48} className="text-primary/40 mb-3" />
+              <MessageCircle size={44} className="text-primary/40 mb-3" />
               <h4 className="font-serif text-lg font-semibold text-foreground">No messages yet!</h4>
-              <p className="text-sm max-w-xs mt-1">
+              <p className="text-xs md:text-sm max-w-xs mt-1">
                 Be the first to say something sweet or start a video call ❤️
               </p>
             </div>
@@ -473,24 +465,24 @@ export const ChatSection: React.FC = () => {
               return (
                 <div
                   key={msg.id || idx}
-                  className={`flex items-end gap-2 ${isMe ? 'justify-end' : 'justify-start'}`}
+                  className={`flex items-end gap-1.5 md:gap-2 ${isMe ? 'justify-end' : 'justify-start'}`}
                 >
                   {!isMe && (
-                    <div className={`w-8 h-8 rounded-full bg-gradient-to-tr ${partner?.color || 'from-pink-500 to-purple-600'} text-white text-xs font-bold flex items-center justify-center shadow-sm`}>
+                    <div className={`w-7 h-7 md:w-8 md:h-8 rounded-full bg-gradient-to-tr ${partner?.color || 'from-pink-500 to-purple-600'} text-white text-[10px] md:text-xs font-bold flex items-center justify-center shadow-sm shrink-0`}>
                       {partner?.avatar || 'K'}
                     </div>
                   )}
 
-                  <div className={`max-w-[75%] md:max-w-[65%] rounded-2xl p-3.5 shadow-sm text-sm ${
+                  <div className={`max-w-[85%] sm:max-w-[75%] md:max-w-[65%] rounded-2xl p-3 shadow-sm text-xs md:text-sm ${
                     isMe
                       ? 'bg-gradient-to-r from-primary to-rose-600 text-white rounded-br-none'
                       : 'bg-card border border-border text-foreground rounded-bl-none'
                   }`}>
-                    <div className="flex items-baseline justify-between gap-4 mb-1">
-                      <span className={`text-[11px] font-bold ${isMe ? 'text-white/80' : 'text-primary'}`}>
+                    <div className="flex items-baseline justify-between gap-3 mb-1">
+                      <span className={`text-[10px] md:text-[11px] font-bold ${isMe ? 'text-white/80' : 'text-primary'}`}>
                         {msg.sender_name}
                       </span>
-                      <span className={`text-[10px] ${isMe ? 'text-white/70' : 'text-muted-foreground'}`}>
+                      <span className={`text-[9px] md:text-[10px] ${isMe ? 'text-white/70' : 'text-muted-foreground'}`}>
                         {formattedTime}
                       </span>
                     </div>
@@ -498,7 +490,7 @@ export const ChatSection: React.FC = () => {
                   </div>
 
                   {isMe && (
-                    <div className={`w-8 h-8 rounded-full bg-gradient-to-tr ${user.color} text-white text-xs font-bold flex items-center justify-center shadow-sm`}>
+                    <div className={`w-7 h-7 md:w-8 md:h-8 rounded-full bg-gradient-to-tr ${user.color} text-white text-[10px] md:text-xs font-bold flex items-center justify-center shadow-sm shrink-0`}>
                       {user.avatar}
                     </div>
                   )}
@@ -509,15 +501,15 @@ export const ChatSection: React.FC = () => {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Emoji Bar & Send Form */}
-        <div className="p-3 md:p-4 bg-card border-t border-border/50">
-          <div className="flex items-center gap-1.5 mb-2 overflow-x-auto pb-1">
+        {/* Mobile Keyboard Friendly Input Footer */}
+        <div className="p-2.5 md:p-4 bg-card border-t border-border/50 shrink-0">
+          <div className="flex items-center gap-1 mb-2 overflow-x-auto pb-1 no-scrollbar">
             {loveEmojis.map((emoji) => (
               <button
                 key={emoji}
                 type="button"
                 onClick={() => addEmoji(emoji)}
-                className="text-lg p-1.5 hover:bg-muted rounded-full transition-transform hover:scale-125"
+                className="text-base md:text-lg p-1 hover:bg-muted rounded-full transition-transform active:scale-125 shrink-0"
               >
                 {emoji}
               </button>
@@ -529,15 +521,15 @@ export const ChatSection: React.FC = () => {
               type="text"
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
-              placeholder={`Write a message to ${partner?.name}...`}
-              className="flex-1 bg-background border border-input rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+              placeholder={`Write to ${partner?.name}...`}
+              className="flex-1 bg-background border border-input rounded-full px-4 py-2.5 text-xs md:text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
             />
             <button
               type="submit"
               disabled={sending || !newMessage.trim()}
-              className="p-3 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded-full shadow-md transition-all hover:scale-105 active:scale-95 flex items-center justify-center"
+              className="p-2.5 md:p-3 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded-full shadow-md transition-all active:scale-95 flex items-center justify-center shrink-0"
             >
-              <Send size={18} />
+              <Send size={16} className="md:w-4 md:h-4" />
             </button>
           </form>
         </div>

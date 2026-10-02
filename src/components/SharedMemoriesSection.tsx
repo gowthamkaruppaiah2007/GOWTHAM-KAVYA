@@ -118,7 +118,7 @@ export const SharedMemoriesSection: React.FC = () => {
   });
 
   return (
-    <div className="w-full max-w-5xl mx-auto p-4 md:p-6 space-y-8">
+    <div className="w-full max-w-5xl mx-auto p-4 md:p-6 pb-24 md:pb-6 space-y-8">
       {/* Header Banner */}
       <div className="text-center relative py-8 px-4 bg-gradient-to-r from-rose-500/10 via-primary/10 to-pink-500/10 rounded-3xl border border-primary/20 shadow-sm overflow-hidden">
         <div className="absolute top-2 left-4 text-primary/20 animate-float-heart">

@@ -3,18 +3,16 @@ import Navbar from '@/components/Navbar';
 import FloatingHearts from '@/components/FloatingHearts';
 import MusicPlayer from '@/components/MusicPlayer';
 import { ChatSection } from '@/components/ChatSection';
-import Footer from '@/components/Footer';
 
 const ChatPage: React.FC = () => {
   return (
-    <div className="min-h-screen bg-background overflow-x-hidden flex flex-col pt-20">
+    <div className="h-[100dvh] w-screen bg-background overflow-hidden flex flex-col pt-16 md:pt-20">
       <Navbar />
       <FloatingHearts />
       <MusicPlayer />
-      <main className="flex-1 py-6">
+      <main className="flex-1 h-full w-full overflow-hidden p-0 md:p-4">
         <ChatSection />
       </main>
-      <Footer />
     </div>
   );
 };
